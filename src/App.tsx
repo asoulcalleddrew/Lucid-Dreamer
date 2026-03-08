@@ -22,6 +22,10 @@ class DreamPixel {
   color: string;
   baseSize: number;
   focalPlane: number = 0.75;
+  
+  // Audio-reactive properties
+  audioScale: number = 1;
+  audioFlash: number = 0;
 
   constructor(x: number, y: number) {
     this.x = x;
@@ -48,17 +52,30 @@ class DreamPixel {
     this.baseSize = Math.random() * 2 + 1.5;
   }
 
-  update(targetX: number, targetY: number, isDreaming: boolean, width: number, height: number) {
+  update(targetX: number, targetY: number, isDreaming: boolean, width: number, height: number, audioData?: { avgFreq: number, bassEnergy: number, isBassDrop: boolean }) {
     if (!isDreaming) return;
 
-    // Organic Brownian motion
-    this.angle += this.angleSpeed;
+    // Audio Influence
+    const freqFactor = audioData ? audioData.avgFreq / 255 : 0;
+    const bassFactor = audioData ? audioData.bassEnergy / 255 : 0;
+    
+    this.audioScale = 1 + (bassFactor * 0.5);
+    if (audioData?.isBassDrop) {
+      this.audioScale *= 2.5;
+      this.audioFlash = 1;
+    } else {
+      this.audioFlash *= 0.9; // Fade out flash
+    }
+
+    // Organic Brownian motion - speeded up by music
+    const speedMult = 1 + freqFactor * 2;
+    this.angle += this.angleSpeed * speedMult;
     this.angleSpeed += (Math.random() - 0.5) * 0.01;
     this.angleSpeed = Math.max(-0.05, Math.min(0.05, this.angleSpeed));
     
     // Base velocity
-    let targetVx = Math.cos(this.angle) * this.speed;
-    let targetVy = Math.sin(this.angle) * this.speed;
+    let targetVx = Math.cos(this.angle) * this.speed * speedMult;
+    let targetVy = Math.sin(this.angle) * this.speed * speedMult;
 
     // Repel if cursor is extremely close (e.g., < 100px)
     const dx = targetX - this.x;
@@ -86,8 +103,10 @@ class DreamPixel {
     if (this.y < -50) this.y = height + 50;
     if (this.y > height + 50) this.y = -50;
     
-    // Flash Rhythm
-    this.flashTimer++;
+    // Flash Rhythm - influenced by music
+    const pulseSpeed = 1 + freqFactor * 3;
+    this.flashTimer += pulseSpeed;
+
     if (this.flashState === 'idle') {
       this.opacity = 0;
       if (this.flashTimer > this.idleDuration) {
@@ -113,7 +132,7 @@ class DreamPixel {
   }
 
   draw(ctx: CanvasRenderingContext2D, isDreaming: boolean) {
-    if (!isDreaming || this.opacity <= 0.01) return;
+    if (!isDreaming || (this.opacity <= 0.01 && this.audioFlash <= 0.01)) return;
     
     ctx.save();
     
@@ -121,19 +140,21 @@ class DreamPixel {
     const dofDistance = Math.abs(this.z - this.focalPlane);
     
     // Size increases massively as it gets further from focal plane (extreme bokeh effect)
-    const bokehRadius = this.baseSize + (dofDistance * 100);
+    const bokehRadius = (this.baseSize + (dofDistance * 100)) * this.audioScale;
     
-    ctx.globalAlpha = this.opacity;
+    const finalOpacity = Math.max(this.opacity, this.audioFlash);
+    ctx.globalAlpha = finalOpacity;
     
     // Draw using ctx.createRadialGradient
     const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, bokehRadius);
     
-    if (dofDistance < 0.05) {
-      // Tack-sharp white core for in-focus fireflies
+    if (dofDistance < 0.05 || this.audioFlash > 0.5) {
+      // Tack-sharp white core for in-focus fireflies or during bass drop
+      const coreColor = this.audioFlash > 0.5 ? '255, 255, 255' : this.color;
       gradient.addColorStop(0, `rgba(255, 255, 255, 1)`);
       gradient.addColorStop(0.1, `rgba(255, 255, 255, 0.8)`);
-      gradient.addColorStop(0.3, `rgba(${this.color}, 0.8)`);
-      gradient.addColorStop(1, `rgba(${this.color}, 0)`);
+      gradient.addColorStop(0.3, `rgba(${coreColor}, 0.8)`);
+      gradient.addColorStop(1, `rgba(${coreColor}, 0)`);
     } else {
       // Soft, out-of-focus bokeh circles
       const alphaMultiplier = Math.max(0.02, 1 - (dofDistance * 2.0));
@@ -166,6 +187,10 @@ export default function App() {
   }, [isDreaming]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const dataArrayRef = useRef<Uint8Array | null>(null);
+  const [bassIntensity, setBassIntensity] = useState(0);
 
   useEffect(() => {
     // Attempt to use the new GitHub file with the updated name
@@ -216,6 +241,24 @@ export default function App() {
     const fadeTime = 100; // ms per step
 
     if (isDreaming) {
+      // Initialize Audio Context on first interaction
+      if (!audioContextRef.current) {
+        const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
+        const ctx = new AudioContextClass();
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 256;
+        
+        const source = ctx.createMediaElementSource(audio);
+        source.connect(analyser);
+        analyser.connect(ctx.destination);
+        
+        audioContextRef.current = ctx;
+        analyserRef.current = analyser;
+        dataArrayRef.current = new Uint8Array(analyser.frequencyBinCount);
+      } else if (audioContextRef.current.state === 'suspended') {
+        audioContextRef.current.resume();
+      }
+
       console.log("Attempting to play audio...");
       audio.play().then(() => {
         console.log("Audio playing successfully");
@@ -291,12 +334,48 @@ export default function App() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
       if (isDreaming) {
+        let avgFreq = 0;
+        let bassEnergy = 0;
+        let isBassDrop = false;
+
+        if (analyserRef.current && dataArrayRef.current) {
+          analyserRef.current.getByteFrequencyData(dataArrayRef.current);
+          
+          // Calculate average frequency
+          let sum = 0;
+          for (let i = 0; i < dataArrayRef.current.length; i++) {
+            sum += dataArrayRef.current[i];
+          }
+          avgFreq = sum / dataArrayRef.current.length;
+
+          // Calculate bass energy (first 10 bins)
+          let bassSum = 0;
+          for (let i = 0; i < 10; i++) {
+            bassSum += dataArrayRef.current[i];
+          }
+          bassEnergy = bassSum / 10;
+          
+          // Detect bass drop (threshold)
+          if (bassEnergy > 200) {
+            isBassDrop = true;
+          }
+          
+          setBassIntensity(bassEnergy / 255);
+        }
+
         // Smoothly interpolate the target position for fluid motion
         smoothedTargetRef.current.x += (targetRef.current.x - smoothedTargetRef.current.x) * 0.15;
         smoothedTargetRef.current.y += (targetRef.current.y - smoothedTargetRef.current.y) * 0.15;
 
         pixelsRef.current.forEach(pixel => {
-          pixel.update(smoothedTargetRef.current.x, smoothedTargetRef.current.y, isDreaming, canvas.width, canvas.height);
+          pixel.update(
+            smoothedTargetRef.current.x, 
+            smoothedTargetRef.current.y, 
+            isDreaming, 
+            canvas.width, 
+            canvas.height,
+            { avgFreq, bassEnergy, isBassDrop }
+          );
           pixel.draw(ctx, isDreaming);
         });
       }
@@ -337,8 +416,10 @@ export default function App() {
           backgroundImage: 'url("https://images.unsplash.com/photo-1511497584788-876760111969?q=80&w=1920&auto=format&fit=crop")',
           backgroundSize: 'cover',
           backgroundPosition: 'center',
-          filter: isDreaming ? 'brightness(0.6)' : 'brightness(1)',
-          transition: 'filter 2s ease-in-out',
+          filter: isDreaming 
+            ? `brightness(${0.4 + (bassIntensity * 0.4)}) blur(${2 + (bassIntensity * 10)}px)` 
+            : 'brightness(1) blur(0px)',
+          transition: isDreaming ? 'filter 0.1s ease-out' : 'filter 2s ease-in-out',
         }}
       >
         {/* Dark overlay for moodiness */}
