@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 
 class DreamPixel {
@@ -154,6 +154,70 @@ export default function App() {
   const [isDreaming, setIsDreaming] = useState(false);
   const [isHoveringBtn, setIsHoveringBtn] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    // Initialize audio with a reliable ambient track
+    const audio = new Audio('https://assets.mixkit.co/music/preview/mixkit-dreaming-big-31.mp3');
+    audio.loop = true;
+    audio.volume = 0;
+    audioRef.current = audio;
+
+    // Preload audio
+    audio.load();
+
+    audio.onerror = (e) => {
+      console.error("Audio element error:", e);
+      console.error("Audio error code:", audio.error?.code);
+      console.error("Audio error message:", audio.error?.message);
+    };
+
+    return () => {
+      audio.pause();
+      audioRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    let fadeInterval: ReturnType<typeof setInterval>;
+    const fadeStep = 0.02;
+    const fadeTime = 100; // ms per step
+
+    if (isDreaming) {
+      console.log("Attempting to play audio...");
+      audio.play().then(() => {
+        console.log("Audio playing successfully");
+      }).catch(e => {
+        console.error("Audio play failed:", e);
+      });
+      
+      fadeInterval = setInterval(() => {
+        if (audio.volume < 0.4) {
+          audio.volume = Math.min(0.4, audio.volume + fadeStep);
+        } else {
+          clearInterval(fadeInterval);
+        }
+      }, fadeTime);
+    } else {
+      console.log("Fading out audio...");
+      fadeInterval = setInterval(() => {
+        if (audio.volume > 0.01) {
+          audio.volume = Math.max(0, audio.volume - fadeStep);
+        } else {
+          audio.volume = 0;
+          audio.pause();
+          console.log("Audio paused");
+          clearInterval(fadeInterval);
+        }
+      }, fadeTime);
+    }
+
+    return () => clearInterval(fadeInterval);
+  }, [isDreaming]);
+
   const targetRef = useRef({ x: -1000, y: -1000 });
   const smoothedTargetRef = useRef({ x: -1000, y: -1000 });
   const pixelsRef = useRef<DreamPixel[]>([]);
