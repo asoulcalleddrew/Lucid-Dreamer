@@ -2,7 +2,7 @@
 <img width="1200" height="475" alt="GHBanner" src="Screenshot 2026-03-08 033859.png" />
 </div>
 
-# Run and deploy your AI Studio app
+# Work in Progress
 
 This contains everything you need to run your app locally.
 
