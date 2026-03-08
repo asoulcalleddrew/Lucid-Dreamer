@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
+import { BookOpen, X } from 'lucide-react';
 
 class DreamPixel {
   x: number;
@@ -152,14 +153,26 @@ class DreamPixel {
 
 export default function App() {
   const [isDreaming, setIsDreaming] = useState(false);
+  const isDreamingRef = useRef(isDreaming);
   const [isHoveringBtn, setIsHoveringBtn] = useState(false);
+  const [isJournalOpen, setIsJournalOpen] = useState(false);
+  const [journalText, setJournalText] = useState('');
+
+  useEffect(() => {
+    isDreamingRef.current = isDreaming;
+    if (!isDreaming) {
+      setIsJournalOpen(false);
+    }
+  }, [isDreaming]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    // Initialize audio with the user's GitHub repository file
-    const audioUrl = 'https://raw.githubusercontent.com/asoulcalleddrew/Lucid-Dreamer/main/Lazy%2030%20minutes%20Chill%20Hip-Hop%20Lofi%20Beats%20to%20relax%20-%20study%20to%20(1).mp3';
-    const audio = new Audio(audioUrl);
+    // Attempt to use the new GitHub file with the updated name
+    const primaryUrl = 'https://raw.githubusercontent.com/asoulcalleddrew/Lucid-Dreamer/main/Chill%20Lofi%20Beats%20%5Bchill%20lo-fi%20hip%20hop%20beats%5D.mp3';
+    const fallbackUrl = 'https://assets.mixkit.co/music/preview/mixkit-dreaming-big-31.mp3';
+    
+    const audio = new Audio(primaryUrl);
     audio.loop = true;
     audio.volume = 0;
     audioRef.current = audio;
@@ -167,10 +180,25 @@ export default function App() {
     // Preload audio
     audio.load();
 
-    audio.onerror = (e) => {
-      console.error("Audio element error:", e);
-      console.error("Audio error code:", audio.error?.code);
-      console.error("Audio error message:", audio.error?.message);
+    audio.onerror = () => {
+      console.warn("Primary audio failed to load, switching to fallback...");
+      if (audio.src !== fallbackUrl) {
+        const wasDreaming = isDreamingRef.current;
+        audio.src = fallbackUrl;
+        audio.load();
+        if (wasDreaming) {
+          audio.play().then(() => {
+            // Fade in manually if we were already dreaming
+            let fadeInterval = setInterval(() => {
+              if (audio.volume < 0.4) {
+                audio.volume = Math.min(0.4, audio.volume + 0.02);
+              } else {
+                clearInterval(fadeInterval);
+              }
+            }, 100);
+          }).catch(console.error);
+        }
+      }
     };
 
     return () => {
@@ -324,31 +352,93 @@ export default function App() {
         style={{ opacity: isDreaming ? 1 : 0, transition: 'opacity 2s ease-in-out' }}
       />
 
-      {/* Main Content */}
-      <div className="relative z-10 flex h-full min-h-screen flex-col justify-end p-6 sm:p-12 pointer-events-none">
-        
-        {/* Bottom Section */}
-        <footer className="flex flex-col items-start justify-end gap-4 pointer-events-auto w-full">
-          <div className="transition-opacity duration-1000" style={{ opacity: isDreaming ? 0.2 : 1 }}>
-            <h1 className={`text-2xl sm:text-3xl font-semibold tracking-widest uppercase transition-all duration-500 ${isHoveringBtn ? 'text-amber-100 drop-shadow-[0_0_20px_rgba(245,158,11,0.8)]' : 'text-amber-50 drop-shadow-[0_0_8px_rgba(245,158,11,0.8)]'}`}>
-              Lucid Dreamer
-            </h1>
+      {/* Dream Journal Modal */}
+      <AnimatePresence>
+        {isJournalOpen && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center p-6 bg-black/20 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="w-full max-w-2xl rounded-2xl bg-zinc-950/80 border border-amber-500/30 backdrop-blur-xl p-8 shadow-[0_0_40px_rgba(251,191,36,0.15)]"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold tracking-[0.3em] text-amber-500 uppercase">
+                  Dream Log
+                </h2>
+                <button 
+                  onClick={() => setIsJournalOpen(false)}
+                  className="p-2 rounded-full hover:bg-white/5 text-amber-500/50 hover:text-amber-500 transition-colors"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+              
+              <textarea
+                value={journalText}
+                onChange={(e) => setJournalText(e.target.value)}
+                placeholder="What are you seeing? Describe the dream..."
+                className="w-full h-64 bg-transparent text-amber-50 placeholder-amber-500/30 border-none outline-none resize-none text-lg leading-relaxed font-sans"
+                autoFocus
+              />
+              
+              <div className="mt-4 flex justify-end">
+                <p className="text-xs text-amber-500/30 uppercase tracking-widest">
+                  Recording subconscious thoughts...
+                </p>
+              </div>
+            </motion.div>
           </div>
+        )}
+      </AnimatePresence>
 
-          <motion.button
-            onClick={() => setIsDreaming(!isDreaming)}
-            onMouseEnter={() => setIsHoveringBtn(true)}
-            onMouseLeave={() => setIsHoveringBtn(false)}
-            whileHover={{ scale: 1.02, boxShadow: "0 0 25px rgba(245,158,11,0.5)" }}
-            whileTap={{ scale: 0.98 }}
-            className="group relative flex items-center justify-center overflow-hidden rounded-xl bg-transparent px-5 py-2.5 border border-amber-400/40 transition-all duration-300 hover:border-amber-400/80 shadow-[0_0_15px_rgba(245,158,11,0.3)]"
-          >
-            <span className="relative font-medium tracking-widest text-amber-50 uppercase text-base drop-shadow-[0_0_8px_rgba(245,158,11,0.8)]">
-              {isDreaming ? 'Leave Dream...' : 'Enter Dream...'}
-            </span>
-          </motion.button>
-        </footer>
-      </div>
+      {/* Main Content */}
+      <div className="relative z-10 flex h-full min-h-screen flex-col pointer-events-none">
+        {/* Top Section */}
+        <header className="p-6 sm:p-12">
+          <h1 className={`text-2xl sm:text-3xl font-semibold tracking-widest uppercase transition-all duration-1000 ${isDreaming || isHoveringBtn ? 'text-amber-100 drop-shadow-[0_0_25px_rgba(245,158,11,1)]' : 'text-amber-50 drop-shadow-[0_0_8px_rgba(245,158,11,0.8)]'}`}>
+            Lucid Dreamer
+          </h1>
+        </header>
+        
+        <div className="flex-grow flex flex-col justify-end p-6 sm:p-12">
+          {/* Bottom Section */}
+          <footer className="flex flex-col items-end justify-end gap-6 pointer-events-auto w-full">
+            <div className="flex items-center gap-4">
+              {/* Journal Button */}
+              {isDreaming && (
+                <motion.button
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  whileHover={{ scale: 1.02, boxShadow: "0 0 25px rgba(245,158,11,0.5)" }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setIsJournalOpen(!isJournalOpen)}
+                  className="group relative flex items-center justify-center overflow-hidden rounded-xl bg-transparent px-5 py-2.5 border border-amber-400/40 transition-all duration-300 hover:border-amber-400/80 shadow-[0_0_15px_rgba(245,158,11,0.3)]"
+                >
+                  <BookOpen className="mr-2 text-amber-400" size={18} />
+                  <span className="relative font-medium tracking-widest text-amber-50 uppercase text-base drop-shadow-[0_0_8px_rgba(245,158,11,0.8)]">
+                    Dream Log
+                  </span>
+                </motion.button>
+              )}
+
+              {/* Dream Toggle Button */}
+              <motion.button
+                onClick={() => setIsDreaming(!isDreaming)}
+                onMouseEnter={() => setIsHoveringBtn(true)}
+                onMouseLeave={() => setIsHoveringBtn(false)}
+                whileHover={{ scale: 1.02, boxShadow: "0 0 25px rgba(245,158,11,0.5)" }}
+                whileTap={{ scale: 0.98 }}
+                className="group relative flex items-center justify-center overflow-hidden rounded-xl bg-transparent px-5 py-2.5 border border-amber-400/40 transition-all duration-300 hover:border-amber-400/80 shadow-[0_0_15px_rgba(245,158,11,0.3)]"
+              >
+                <span className="relative font-medium tracking-widest text-amber-50 uppercase text-base drop-shadow-[0_0_8px_rgba(245,158,11,0.8)]">
+                  {isDreaming ? 'Leave Dream...' : 'Enter Dream...'}
+                </span>
+              </motion.button>
+            </div>
+          </footer>
+        </div>
     </div>
-  );
+  </div>
+);
 }
