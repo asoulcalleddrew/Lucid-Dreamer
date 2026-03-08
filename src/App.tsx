@@ -157,8 +157,9 @@ export default function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    // Initialize audio with a reliable ambient track
-    const audio = new Audio('https://assets.mixkit.co/music/preview/mixkit-dreaming-big-31.mp3');
+    // Initialize audio with the user's GitHub repository file
+    const audioUrl = 'https://raw.githubusercontent.com/asoulcalleddrew/Lucid-Dreamer/main/Lazy%2030%20minutes%20Chill%20Hip-Hop%20Lofi%20Beats%20to%20relax%20-%20study%20to%20(1).mp3';
+    const audio = new Audio(audioUrl);
     audio.loop = true;
     audio.volume = 0;
     audioRef.current = audio;
@@ -329,7 +330,7 @@ export default function App() {
         {/* Bottom Section */}
         <footer className="flex flex-col items-start justify-end gap-4 pointer-events-auto w-full">
           <div className="transition-opacity duration-1000" style={{ opacity: isDreaming ? 0.2 : 1 }}>
-            <h1 className={`text-2xl sm:text-3xl font-semibold tracking-widest uppercase transition-all duration-500 ${isHoveringBtn ? 'text-amber-100 drop-shadow-[0_0_35px_rgba(245,158,11,1)]' : 'text-amber-50 drop-shadow-[0_0_15px_rgba(245,158,11,0.8)]'}`}>
+            <h1 className={`text-2xl sm:text-3xl font-semibold tracking-widest uppercase transition-all duration-500 ${isHoveringBtn ? 'text-amber-100 drop-shadow-[0_0_20px_rgba(245,158,11,0.8)]' : 'text-amber-50 drop-shadow-[0_0_8px_rgba(245,158,11,0.8)]'}`}>
               Lucid Dreamer
             </h1>
           </div>
